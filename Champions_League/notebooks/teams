@@ -1,0 +1,103 @@
+# 
+import pandas as pd
+
+# === 1. Charger les fichiers CSV ===
+attacking = pd.read_csv("data/attacking.csv")
+attempts = pd.read_csv("data/attempts.csv")
+defending = pd.read_csv("data/defending.csv")
+disciplinary = pd.read_csv("data/disciplinary.csv")
+distribution = pd.read_csv("data/distributon.csv")
+goalkeeping = pd.read_csv("data/goalkeeping.csv")
+goals = pd.read_csv("data/goals.csv")
+key_stats = pd.read_csv("data/key_stats.csv")
+
+# === 2. Nettoyage de base ===
+attacking = attacking.fillna(0)
+attempts = attempts.fillna(0)
+defending = defending.fillna(0)
+disciplinary = disciplinary.fillna(0)
+distribution = distribution.fillna(0)
+goalkeeping = goalkeeping.fillna(0)
+goals = goals.fillna(0)
+key_stats = key_stats.fillna(0)
+
+# === 3. Minutes totales par équipe (base pour normalisation) ===
+minutes_team = key_stats.groupby('club').agg({
+    'minutes_played': 'sum'
+}).reset_index().rename(columns={'minutes_played': 'total_minutes'})
+
+# === 4. Agrégation par équipe des stats brutes ===
+# Tirs et buts
+attempts_team = attempts.groupby('club').agg({
+    'total_attempts': 'sum',
+    'on_target': 'sum'
+}).reset_index()
+
+goals_team = goals.groupby('club').agg({
+    'goals': 'sum'
+}).reset_index()
+
+# Passes
+distribution_team = distribution.groupby('club').agg({
+    'pass_attempted': 'sum',
+    'pass_accuracy': 'mean',
+    'cross_attempted': 'sum'
+}).reset_index()
+
+# Défense
+defending_team = defending.groupby('club').agg({
+    'balls_recoverd': 'sum',
+    'tackles': 'sum'
+}).reset_index()
+
+# Discipline
+disciplinary_team = disciplinary.groupby('club').agg({
+    'fouls_committed': 'sum',
+    'fouls_suffered': 'sum'
+}).reset_index()
+
+# Gardien
+goalkeeping_team = goalkeeping.groupby('club').agg({
+    'saved': 'sum'
+}).reset_index()
+
+# Dribbles et centres
+attacking_team = attacking.groupby('club').agg({
+    'dribbles': 'sum',
+    
+}).reset_index()
+
+# === 5. Fusionner toutes les stats ===
+team_stats = attempts_team \
+    .merge(goals_team, on='club', how='outer') \
+    .merge(distribution_team, on='club', how='outer') \
+    .merge(defending_team, on='club', how='outer') \
+    .merge(disciplinary_team, on='club', how='outer') \
+    .merge(goalkeeping_team, on='club', how='outer') \
+    .merge(attacking_team, on='club', how='outer') \
+    .merge(minutes_team, on='club', how='outer')
+
+team_stats = team_stats.fillna(0)
+
+# === 6. Normalisation par 90 minutes ===
+cols_to_normalize = [
+    'balls_recoverd',
+    'tackles',
+    'fouls_committed',
+    'fouls_suffered',
+    'saved',
+    'dribbles',
+    'cross_attempted'
+]
+
+for col in cols_to_normalize:
+    team_stats[col + '_per90'] = team_stats.apply(
+        lambda row: (row[col] / row['total_minutes']) * 90 if row['total_minutes'] > 0 else 0,
+        axis=1
+    )
+
+# === 7. Résultat final ===
+print(team_stats.head())
+
+# (Optionnel) Sauvegarde dans un fichier CSV
+team_stats.to_csv("team_stats_normalized.csv", index=False)
